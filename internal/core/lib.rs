@@ -11,6 +11,7 @@
 #![cfg_attr(slint_nightly_test, warn(non_exhaustive_omitted_patterns))]
 #![no_std]
 #![debugger_visualizer(gdb_script_file = "gdb_pretty_printers.py")]
+#![feature(allocator_api)]
 
 extern crate alloc;
 #[cfg(feature = "std")]

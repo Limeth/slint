@@ -13,13 +13,21 @@
 #![allow(unsafe_code)]
 #![warn(missing_docs)]
 
+use core::alloc::Allocator;
+use once_cell::sync::OnceCell;
+
+pub static ALLOCATOR: OnceCell<&'static (dyn Allocator + Sync)> = OnceCell::new();
+
 /// A singled linked list whose nodes are pinned
 mod single_linked_list_pin {
     #![allow(unsafe_code)]
     use alloc::boxed::Box;
+    use core::alloc::Allocator;
     use core::pin::Pin;
 
-    type NodePtr<T> = Option<Pin<Box<SingleLinkedListPinNode<T>>>>;
+    use crate::properties::ALLOCATOR;
+
+    type NodePtr<T> = Option<Pin<Box<SingleLinkedListPinNode<T>, &'static (dyn Allocator + Sync)>>>;
     struct SingleLinkedListPinNode<T> {
         next: NodePtr<T>,
         value: T,
@@ -44,7 +52,10 @@ mod single_linked_list_pin {
 
     impl<T> SingleLinkedListPinHead<T> {
         pub fn push_front(&mut self, value: T) -> Pin<&T> {
-            self.0 = Some(Box::pin(SingleLinkedListPinNode { next: self.0.take(), value }));
+            self.0 = Some(Box::pin_in(
+                SingleLinkedListPinNode { next: self.0.take(), value },
+                ALLOCATOR.get().expect("`i-slint-core::properties::ALLOCATOR` must be set"),
+            ));
             // Safety: we can project from SingleLinkedListPinNode
             unsafe { Pin::new_unchecked(&self.0.as_ref().unwrap().value) }
         }
