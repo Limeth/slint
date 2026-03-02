@@ -12,6 +12,7 @@ use crate::layout::Orientation;
 use crate::lengths::{LogicalLength, RectLengths};
 use crate::{Coord, Property, SharedString, SharedVector};
 pub use adapters::{FilterModel, MapModel, ReverseModel, SortModel};
+use alloc::alloc::{Allocator, Global};
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
@@ -338,7 +339,7 @@ impl<T> Iterator for ModelIterator<'_, T> {
 
 impl<T> ExactSizeIterator for ModelIterator<'_, T> {}
 
-impl<M: Model> Model for Rc<M> {
+impl<M: Model, A: Allocator> Model for Rc<M, A> {
     type Data = M::Data;
 
     fn row_count(&self) -> usize {
@@ -362,24 +363,34 @@ impl<M: Model> Model for Rc<M> {
 }
 
 /// A [`Model`] backed by a `Vec<T>`, using interior mutability.
-pub struct VecModel<T> {
-    array: RefCell<Vec<T>>,
+pub struct VecModel<T, A: Allocator = Global> {
+    array: RefCell<Vec<T, A>>,
     notify: ModelNotify,
 }
 
-impl<T> Default for VecModel<T> {
+impl<T> Default for VecModel<T, Global> {
     fn default() -> Self {
         Self { array: Default::default(), notify: Default::default() }
     }
 }
 
-impl<T: 'static> VecModel<T> {
+impl<T: 'static> VecModel<T, Global> {
     /// Allocate a new model from a slice
     pub fn from_slice(slice: &[T]) -> ModelRc<T>
     where
         T: Clone,
     {
         ModelRc::new(Self::from(slice.to_vec()))
+    }
+}
+
+impl<T: 'static, A: Allocator + 'static> VecModel<T, A> {
+    /// Allocate a new model from a slice
+    pub fn from_slice_in(slice: &[T], alloc: A) -> ModelRc<T>
+    where
+        T: Clone,
+    {
+        ModelRc::new(Self::from(slice.to_vec_in(alloc)))
     }
 
     /// Add a row at the end of the model
@@ -405,7 +416,7 @@ impl<T: 'static> VecModel<T> {
     }
 
     /// Replace inner Vec with new data
-    pub fn set_vec(&self, new: impl Into<Vec<T>>) {
+    pub fn set_vec(&self, new: impl Into<Vec<T, A>>) {
         *self.array.borrow_mut() = new.into();
         self.notify.reset();
     }
@@ -442,7 +453,7 @@ impl<T: 'static> VecModel<T> {
     }
 }
 
-impl<T: Clone + 'static> VecModel<T> {
+impl<T: Clone + 'static, A: Allocator> VecModel<T, A> {
     /// Appends all the elements in the slice to the model
     ///
     /// Similar to [`Vec::extend_from_slice`]
@@ -456,19 +467,19 @@ impl<T: Clone + 'static> VecModel<T> {
     }
 }
 
-impl<T> From<Vec<T>> for VecModel<T> {
-    fn from(array: Vec<T>) -> Self {
+impl<T, A: Allocator> From<Vec<T, A>> for VecModel<T, A> {
+    fn from(array: Vec<T, A>) -> Self {
         VecModel { array: RefCell::new(array), notify: Default::default() }
     }
 }
 
-impl<T> FromIterator<T> for VecModel<T> {
+impl<T> FromIterator<T> for VecModel<T, Global> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         VecModel::from(Vec::from_iter(iter))
     }
 }
 
-impl<T: Clone + 'static> Model for VecModel<T> {
+impl<T: Clone + 'static, A: Allocator + 'static> Model for VecModel<T, A> {
     type Data = T;
 
     fn row_count(&self) -> usize {
