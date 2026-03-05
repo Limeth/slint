@@ -385,12 +385,27 @@ impl<T: 'static> VecModel<T, Global> {
 }
 
 impl<T: 'static, A: Allocator + 'static> VecModel<T, A> {
-    /// Allocate a new model from a slice
-    pub fn from_slice_in(slice: &[T], alloc: A) -> ModelRc<T>
+    pub fn new_in(alloc: A) -> ModelRc<T, A>
     where
         T: Clone,
+        A: Clone,
     {
-        ModelRc::new(Self::from(slice.to_vec_in(alloc)))
+        ModelRc::new_in(Self::from(Vec::new_in(alloc.clone())), alloc)
+    }
+
+    /// Allocate a new model from a slice
+    pub fn from_slice_in(slice: &[T], alloc: A) -> ModelRc<T, A>
+    where
+        T: Clone,
+        A: Clone,
+    {
+        ModelRc::new_in(Self::from(slice.to_vec_in(alloc.clone())), alloc)
+    }
+
+    pub fn from_iter_in<I: IntoIterator<Item = T>>(iter: I, alloc: A) -> Self {
+        let mut vec = Vec::new_in(alloc);
+        vec.extend(iter);
+        Self::from(vec)
     }
 
     /// Add a row at the end of the model
@@ -714,28 +729,28 @@ impl Model for bool {
 /// });
 /// ui.run().unwrap();
 /// ```
-pub struct ModelRc<T>(Option<Rc<dyn Model<Data = T>>>);
+pub struct ModelRc<T, A: Allocator = Global>(Option<Rc<dyn Model<Data = T>, A>>);
 
-impl<T> core::fmt::Debug for ModelRc<T> {
+impl<T, A: Allocator> core::fmt::Debug for ModelRc<T, A> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "ModelRc(dyn Model)")
     }
 }
 
-impl<T> Clone for ModelRc<T> {
+impl<T, A: Allocator + Clone> Clone for ModelRc<T, A> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<T> Default for ModelRc<T> {
+impl<T, A: Allocator> Default for ModelRc<T, A> {
     /// Construct an empty model
     fn default() -> Self {
         Self(None)
     }
 }
 
-impl<T> core::cmp::PartialEq for ModelRc<T> {
+impl<T, A: Allocator> core::cmp::PartialEq for ModelRc<T, A> {
     fn eq(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
             (None, None) => true,
@@ -748,45 +763,51 @@ impl<T> core::cmp::PartialEq for ModelRc<T> {
     }
 }
 
-impl<T> ModelRc<T> {
+impl<T> ModelRc<T, Global> {
     pub fn new(model: impl Model<Data = T> + 'static) -> Self {
         Self(Some(Rc::new(model)))
     }
 }
 
-impl<T, M: Model<Data = T> + 'static> From<Rc<M>> for ModelRc<T> {
-    fn from(model: Rc<M>) -> Self {
+impl<T, A: Allocator> ModelRc<T, A> {
+    pub fn new_in(model: impl Model<Data = T> + 'static, alloc: A) -> Self {
+        Self(Some(Rc::new_in(model, alloc)))
+    }
+}
+
+impl<T, A: Allocator, M: Model<Data = T> + 'static> From<Rc<M, A>> for ModelRc<T, A> {
+    fn from(model: Rc<M, A>) -> Self {
         Self(Some(model))
     }
 }
 
-impl<T> From<Rc<dyn Model<Data = T> + 'static>> for ModelRc<T> {
-    fn from(model: Rc<dyn Model<Data = T> + 'static>) -> Self {
+impl<T, A: Allocator> From<Rc<dyn Model<Data = T> + 'static, A>> for ModelRc<T, A> {
+    fn from(model: Rc<dyn Model<Data = T> + 'static, A>) -> Self {
         Self(Some(model))
     }
 }
 
-impl<T: Clone + 'static> From<&[T]> for ModelRc<T> {
+impl<T: Clone + 'static> From<&[T]> for ModelRc<T, Global> {
     fn from(slice: &[T]) -> Self {
         VecModel::from_slice(slice)
     }
 }
 
-impl<T: Clone + 'static, const N: usize> From<[T; N]> for ModelRc<T> {
+impl<T: Clone + 'static, const N: usize> From<[T; N]> for ModelRc<T, Global> {
     fn from(array: [T; N]) -> Self {
         VecModel::from_slice(&array)
     }
 }
 
-impl<T> TryInto<Rc<dyn Model<Data = T>>> for ModelRc<T> {
+impl<T, A: Allocator> TryInto<Rc<dyn Model<Data = T>, A>> for ModelRc<T, A> {
     type Error = ();
 
-    fn try_into(self) -> Result<Rc<dyn Model<Data = T>>, Self::Error> {
+    fn try_into(self) -> Result<Rc<dyn Model<Data = T>, A>, Self::Error> {
         self.0.ok_or(())
     }
 }
 
-impl<T> Model for ModelRc<T> {
+impl<T, A: Allocator> Model for ModelRc<T, A> {
     type Data = T;
 
     fn row_count(&self) -> usize {
