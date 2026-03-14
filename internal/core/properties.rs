@@ -18,16 +18,79 @@ use once_cell::sync::OnceCell;
 
 pub static ALLOCATOR: OnceCell<&'static (dyn Allocator + Sync)> = OnceCell::new();
 
+struct AllocatorRefProxy;
+
+unsafe impl Allocator for AllocatorRefProxy {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        ALLOCATOR.get().expect("`i-slint-core::properties::ALLOCATOR` must be set").allocate(layout)
+    }
+
+    fn allocate_zeroed(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        ALLOCATOR
+            .get()
+            .expect("`i-slint-core::properties::ALLOCATOR` must be set")
+            .allocate_zeroed(layout)
+    }
+
+    unsafe fn grow(
+        &self,
+        ptr: core::ptr::NonNull<u8>,
+        old_layout: core::alloc::Layout,
+        new_layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        ALLOCATOR
+            .get()
+            .expect("`i-slint-core::properties::ALLOCATOR` must be set")
+            .grow(ptr, old_layout, new_layout)
+    }
+
+    unsafe fn grow_zeroed(
+        &self,
+        ptr: core::ptr::NonNull<u8>,
+        old_layout: core::alloc::Layout,
+        new_layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        ALLOCATOR
+            .get()
+            .expect("`i-slint-core::properties::ALLOCATOR` must be set")
+            .grow_zeroed(ptr, old_layout, new_layout)
+    }
+
+    unsafe fn shrink(
+        &self,
+        ptr: core::ptr::NonNull<u8>,
+        old_layout: core::alloc::Layout,
+        new_layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        ALLOCATOR
+            .get()
+            .expect("`i-slint-core::properties::ALLOCATOR` must be set")
+            .shrink(ptr, old_layout, new_layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
+        ALLOCATOR
+            .get()
+            .expect("`i-slint-core::properties::ALLOCATOR` must be set")
+            .deallocate(ptr, layout)
+    }
+}
+
 /// A singled linked list whose nodes are pinned
 mod single_linked_list_pin {
     #![allow(unsafe_code)]
     use alloc::boxed::Box;
-    use core::alloc::Allocator;
     use core::pin::Pin;
 
-    use crate::properties::ALLOCATOR;
+    use crate::properties::AllocatorRefProxy;
 
-    type NodePtr<T> = Option<Pin<Box<SingleLinkedListPinNode<T>, &'static (dyn Allocator + Sync)>>>;
+    type NodePtr<T> = Option<Pin<Box<SingleLinkedListPinNode<T>, AllocatorRefProxy>>>;
     struct SingleLinkedListPinNode<T> {
         next: NodePtr<T>,
         value: T,
@@ -54,7 +117,7 @@ mod single_linked_list_pin {
         pub fn push_front(&mut self, value: T) -> Pin<&T> {
             self.0 = Some(Box::pin_in(
                 SingleLinkedListPinNode { next: self.0.take(), value },
-                ALLOCATOR.get().expect("`i-slint-core::properties::ALLOCATOR` must be set"),
+                AllocatorRefProxy,
             ));
             // Safety: we can project from SingleLinkedListPinNode
             unsafe { Pin::new_unchecked(&self.0.as_ref().unwrap().value) }
