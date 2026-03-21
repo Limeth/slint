@@ -16,6 +16,8 @@
 use core::alloc::Allocator;
 use once_cell::sync::OnceCell;
 
+/// The allocator to use for properties.
+/// Must be set before running Slint.
 pub static ALLOCATOR: OnceCell<&'static (dyn Allocator + Sync)> = OnceCell::new();
 
 struct AllocatorRefProxy;
@@ -44,10 +46,12 @@ unsafe impl Allocator for AllocatorRefProxy {
         old_layout: core::alloc::Layout,
         new_layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-        ALLOCATOR
-            .get()
-            .expect("`i-slint-core::properties::ALLOCATOR` must be set")
-            .grow(ptr, old_layout, new_layout)
+        unsafe {
+            ALLOCATOR
+                .get()
+                .expect("`i-slint-core::properties::ALLOCATOR` must be set")
+                .grow(ptr, old_layout, new_layout)
+        }
     }
 
     unsafe fn grow_zeroed(
@@ -56,10 +60,12 @@ unsafe impl Allocator for AllocatorRefProxy {
         old_layout: core::alloc::Layout,
         new_layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-        ALLOCATOR
-            .get()
-            .expect("`i-slint-core::properties::ALLOCATOR` must be set")
-            .grow_zeroed(ptr, old_layout, new_layout)
+        unsafe {
+            ALLOCATOR
+                .get()
+                .expect("`i-slint-core::properties::ALLOCATOR` must be set")
+                .grow_zeroed(ptr, old_layout, new_layout)
+        }
     }
 
     unsafe fn shrink(
@@ -68,17 +74,21 @@ unsafe impl Allocator for AllocatorRefProxy {
         old_layout: core::alloc::Layout,
         new_layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-        ALLOCATOR
-            .get()
-            .expect("`i-slint-core::properties::ALLOCATOR` must be set")
-            .shrink(ptr, old_layout, new_layout)
+        unsafe {
+            ALLOCATOR
+                .get()
+                .expect("`i-slint-core::properties::ALLOCATOR` must be set")
+                .shrink(ptr, old_layout, new_layout)
+        }
     }
 
     unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
-        ALLOCATOR
-            .get()
-            .expect("`i-slint-core::properties::ALLOCATOR` must be set")
-            .deallocate(ptr, layout)
+        unsafe {
+            ALLOCATOR
+                .get()
+                .expect("`i-slint-core::properties::ALLOCATOR` must be set")
+                .deallocate(ptr, layout)
+        }
     }
 }
 
